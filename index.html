@@ -327,7 +327,7 @@ function onMsg(topic,buf){
   const txt=buf&&buf.toString?buf.toString():'';
   if(MODE==='host'&&topic===T('c2h')){try{onHostMsg(JSON.parse(txt))}catch(e){}}
   else if(MODE==='client'&&topic===T('state')){
-    if(!txt){R=null;UI.net='방이 닫혔어요. 방장에게 새 방 코드를 받아 주세요.';render();return}
+    if(!txt){if(R){closeNet();R=null;UI.net='💥 방장이 방을 폭파했어요.';render()}return}
     let m;try{m=JSON.parse(txt)}catch(e){return}
     if(!m||!m.R)return;
     R=m.R;PD=m.PD||{};lastStateAt=m.at||Date.now();
@@ -417,6 +417,32 @@ document.addEventListener('visibilitychange',()=>{
 function closeNet(){
   clearTimeout(watchT);clearInterval(hbT);clearTimeout(tmr);tmr=null;mqClose();
 }
+function leaveClick(){
+  if(MODE==='host'&&R&&R.phase!=='lobby'&&R.phase!=='end'){
+    modal(`<h2>나가기</h2><p class="muted" style="margin:8px 0 14px">게임이 진행 중이에요.</p>
+      <button class="btn w100" onclick="closeModal();leaveRoom()">잠시 나가기<br><small>나중에 ‘진행 중이던 방 다시 열기’로 이어서 가능</small></button>
+      <button class="btn w100" style="margin-top:8px;background:#5a1f1f;color:#ffd0d0" onclick="bombAsk()">💥 방 폭파<br><small>모두 내보내고 방을 없애요</small></button>
+      <button class="btn w100" style="margin-top:8px;background:transparent" onclick="closeModal()">취소</button>`);
+    return;
+  }
+  leaveRoom();
+}
+function bombAsk(){
+  modal(`<h2>💥 방을 폭파할까요?</h2><p class="muted" style="margin:8px 0 14px">참가자 모두의 화면에서 방이 사라지고, 되돌릴 수 없어요.</p>
+    <button class="btn w100" style="background:#c53030;color:#fff" onclick="closeModal();bombRoom()">폭파</button>
+    <button class="btn w100" style="margin-top:8px" onclick="closeModal()">취소</button>`);
+}
+async function bombRoom(){
+  if(MODE!=='host')return;
+  lsSet('h13host','');
+  try{MQ&&MQ.publish(T('state'),'',{qos:1,retain:true})}catch(e){}
+  await sleep(500);
+  closeNet();MODE=null;R=null;HW=null;PD={};UI.screen='home';UI.err='';UI.net='';
+  try{history.replaceState(null,'',location.pathname)}catch(e){}
+  render();
+}
+function modal(html){document.getElementById('modal').innerHTML=`<div class="modal" onclick="if(event.target===this)closeModal()"><div class="box">${html}</div></div>`}
+function closeModal(){document.getElementById('modal').innerHTML=''}
 async function leaveRoom(){
   if(MODE==='client'&&R&&R.phase==='lobby')send({t:'me',patch:{left:true}});
   if(MODE==='host'&&R&&(R.phase==='lobby'||R.phase==='end')){
@@ -490,7 +516,7 @@ function renderGame(){
     if(me){const ch=Object.keys(me.chips).filter(k=>me.chips[k]>0);if(ch.length===1)UI.sel.chip=ch[0]}}
   let h=`<div class="top"><div><h1>무거운 13</h1><div class="r">${MODE!=='solo'?`방 <b style="color:#f0b429;letter-spacing:2px">${esc(R.code)}</b> · `:''}${R.phase==='lobby'?'대기실':`${Math.min(R.round,14)} / 14 라운드`}</div></div>
   <div class="row" style="align-items:center">${MODE==='solo'?`<label class="tog"><input type="checkbox" ${UI.fast?'checked':''} onchange="UI.fast=this.checked">빠르게</label>`:''}
-  <button class="btn sm" onclick="showRules()">규칙</button><button class="btn sm" onclick="leaveRoom()">나가기</button></div></div>`;
+  <button class="btn sm" onclick="showRules()">규칙</button><button class="btn sm" onclick="leaveClick()">나가기</button></div></div>`;
   if(UI.err)h+=`<div class="err">${esc(UI.err)} <button class="btn xs" onclick="UI.err='';render()">닫기</button></div>`;
   if(UI.net)h+=`<div class="err" style="background:#2a2410;color:#f5d58a">${esc(UI.net)}</div>`;
   if(R.phase==='lobby'){app.innerHTML=h+renderLobby();return}
@@ -514,6 +540,7 @@ function renderGame(){
   else if(R.phase==='roundEnd')h+=`<div class="panel">${renderOrder()}<div class="hint">곧 ${R.round}라운드가 시작돼요…</div></div>`;
   else if(R.phase==='end')h+=renderEnd();
   h+=renderHostTools();
+  if(MODE==='host'&&R.phase!=='end')h+=`<div style="text-align:center;margin:4px 0 12px"><button class="btn xs" style="background:#3a1d1d;color:#ffb4b4" onclick="bombAsk()">💥 방 폭파</button></div>`;
   h+=`<div class="panel"><div class="ptitle">기록</div><div class="log">${R.log.join('<br>')}</div></div>`;
 
   app.innerHTML=h;
@@ -526,7 +553,7 @@ function renderLobby(){
   <div class="panel"><div class="ptitle">참가자 ${R.players.length}/${MAXP}</div>
     ${R.players.map(p=>`<div class="wait"><span>${esc(p.name)}${p.bot?' 🤖':''}${p.id===R.host?' 👑':''}${p.id===ME.uid?' (나)':''}</span></div>`).join('')||'<div class="muted">입장 중…</div>'}
     ${host?`<div class="row" style="margin-top:10px"><button class="btn sm" onclick="hostAddBot()">+ AI 추가</button><button class="btn sm" onclick="hostRemoveBot()">− AI 빼기</button></div>
-      <button class="btn pri w100" style="margin-top:10px" ${R.players.length<3?'disabled':''} onclick="hostStart()">게임 시작 ${R.players.length<3?'(3명 이상)':''}</button>`
+      <button class="btn pri w100" style="margin-top:10px" ${R.players.length<3?'disabled':''} onclick="hostStart()">게임 시작 ${R.players.length<3?'(3명 이상)':''}</button><button class="btn sm w100" style="margin-top:8px;background:#3a1d1d;color:#ffb4b4" onclick="bombAsk()">💥 방 폭파</button>`
     :`<div class="muted" style="margin-top:8px">방장이 시작하기를 기다리는 중…</div>`}
   </div>`;
 }
