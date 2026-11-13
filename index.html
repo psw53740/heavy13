@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>무거운 13</title>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.16.1/dist/mqtt.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#111316;color:#e9eaec;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:15px;-webkit-tap-highlight-color:transparent}
@@ -103,20 +103,12 @@ function newUid(){return 'u'+Math.random().toString(36).slice(2,10)}
 let ME={uid:lsGet('h13uid')||newUid(),name:lsGet('h13name')||''};
 lsSet('h13uid',ME.uid);
 let CODE=null;
-let PEER=null,HOSTCONN=null,CONNS={},retryT=null;
 let myPick=null,revealing=false;
 const UI={screen:'home',sel:{card:null,chip:null,round:-1},fast:false,err:'',sentKey:null,soloN:7,net:''};
 const isHost=()=>R&&R.host===ME.uid&&MODE!=='client';
 const myIdx=()=>R?R.players.findIndex(p=>p.id===ME.uid):-1;
 const pace=()=>MODE==='solo'?(UI.fast?150:750):1100;
 function showErr(e){UI.err=typeof e==='string'?e:'오류가 났어요: '+(e&&e.message||e);render()}
-const PEER_PREFIX='h13dp-';
-const PEER_OPTS={debug:0,config:{iceServers:[
-  {urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},
-  {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
-  {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}
-]}};
-if(window.H13_PEER_OPTS)Object.assign(PEER_OPTS,window.H13_PEER_OPTS);
 
 /* ================= game engine (host) ================= */
 function freshPlayer(id,name,bot){return {id,name,bot,auto:false,autoAt:0,penalty:0,last:0,hand:[0,1,2,3,4,5,6],chips:{R:2,G:2,B:2,W:1}}}
@@ -311,48 +303,65 @@ function startSolo(){
   startGame(X);R=X;UI.screen='game';UI.err='';render();kick();
 }
 
-/* ---- P2P: host ---- */
+/* ---- online via relay server (MQTT over WebSocket) ---- */
+const MQTT_URLS=window.H13_MQTT_URLS||['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'];
+let MQ=null,urlIdx=0,hbT=null,watchT=null,lastHello=0,lastStateAt=0;
+const T=k=>`h13dp/v1/${CODE}/${k}`;
 function randCode(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ';return Array.from({length:4},()=>a[Math.floor(Math.random()*a.length)]).join('')}
+function mqClose(){try{MQ&&MQ.end(true)}catch(e){}MQ=null}
+function mqConnect(onConnect){
+  mqClose();
+  const url=MQTT_URLS[urlIdx%MQTT_URLS.length];
+  const c=mqtt.connect(url,{clientId:'h13_'+ME.uid+'_'+Math.random().toString(36).slice(2,6),reconnectPeriod:2000,connectTimeout:8000,clean:true,keepalive:30});
+  MQ=c;let ever=false;
+  const failT=setTimeout(()=>{if(!ever&&MQ===c){urlIdx++;UI.net='다른 서버로 연결 시도 중…';render();mqConnect(onConnect)}},10000);
+  c.on('connect',()=>{if(MQ!==c)return;ever=true;clearTimeout(failT);onConnect(c)});
+  c.on('reconnect',()=>{if(MQ===c&&ever){UI.net='연결이 끊겼어요 — 재연결 중…';render()}});
+  c.on('message',(topic,buf)=>{if(MQ===c)onMsg(topic,buf)});
+  c.on('error',()=>{});
+}
+function onMsg(topic,buf){
+  const txt=buf&&buf.toString?buf.toString():'';
+  if(MODE==='host'&&topic===T('c2h')){try{onHostMsg(JSON.parse(txt))}catch(e){}}
+  else if(MODE==='client'&&topic===T('state')){
+    if(!txt){R=null;UI.net='방이 닫혔어요. 방장에게 새 방 코드를 받아 주세요.';render();return}
+    let m;try{m=JSON.parse(txt)}catch(e){return}
+    if(!m||!m.R)return;
+    R=m.R;PD=m.PD||{};lastStateAt=m.at||Date.now();
+    UI.net=Date.now()-lastStateAt>90000?'방장이 지금 접속해 있지 않은 것 같아요. 방장이 앱을 다시 열면 이어져요.':'';
+    if(!PD[ME.uid]||PD[ME.uid].name!==ME.name)hello();
+    render();maybeReveal();
+  }
+}
+
+/* host */
 function saveHost(){if(MODE==='host')lsSet('h13host',JSON.stringify({R,PD,at:Date.now()}))}
 function savedHost(){try{const s=JSON.parse(lsGet('h13host')||'null');if(s&&s.R&&Date.now()-s.at<6*3600e3&&s.R.host===ME.uid&&s.R.status!=='end')return s}catch(e){}return null}
 function createRoom(resume){
   if(!saveName())return;
-  if(typeof Peer==='undefined'){showErr('연결 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.');return}
+  if(typeof mqtt==='undefined'){showErr('연결 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.');return}
   closeNet();
   const s=resume?savedHost():null;
-  const code=s?s.R.code:randCode();
-  MODE='host';CODE=code;HW=null;myPick=null;UI.err='';UI.screen='game';
+  CODE=s?s.R.code:randCode();
+  MODE='host';HW=null;myPick=null;UI.err='';UI.screen='game';
   if(s){R=s.R;PD=s.PD;R.host=ME.uid}
-  else{R=newRoom(code,ME.uid);PD={[ME.uid]:{name:ME.name,joined:Date.now(),left:false}};syncLobby(R)}
+  else{R=newRoom(CODE,ME.uid);PD={[ME.uid]:{name:ME.name,joined:Date.now(),left:false}};syncLobby(R)}
   UI.net='방 여는 중…';render();
-  openHostPeer(0);
-}
-function openHostPeer(tries){
-  PEER=new Peer(PEER_PREFIX+CODE,PEER_OPTS);
-  PEER.on('open',()=>{UI.net='';render();saveHost();kick()});
-  PEER.on('connection',conn=>{
-    conn.on('data',m=>onHostMsg(conn,m));
-    conn.on('close',()=>{for(const k in CONNS)if(CONNS[k]===conn)delete CONNS[k]});
+  mqConnect(c=>{
+    c.subscribe(T('c2h'),{qos:1});
+    UI.net='';render();saveHost();broadcast(true);kick();
   });
-  PEER.on('disconnected',()=>{UI.net='서버 연결 끊김 — 재연결 중…';render();setTimeout(()=>{try{PEER&&!PEER.destroyed&&PEER.reconnect()}catch(e){}},1500)});
-  PEER.on('error',e=>{
-    if(e.type==='unavailable-id'){
-      try{PEER.destroy()}catch(_){}
-      if(tries<8){UI.net='방 코드 확보 중… 잠시만요';render();setTimeout(()=>openHostPeer(tries+1),2500)}
-      else{if(!savedHost()){CODE=randCode();R.code=CODE;openHostPeer(0)}else showErr('이 방 코드를 다시 열 수 없어요. 새 방을 만들어 주세요.')}
-    }else if(e.type==='network'||e.type==='server-error'||e.type==='socket-error'){UI.net='연결 서버에 접속이 안 돼요 — 재시도 중…';render()}
-  });
+  clearInterval(hbT);hbT=setInterval(()=>broadcast(true),20000);
 }
-function onHostMsg(conn,m){
+function onHostMsg(m){
   if(!m||typeof m!=='object')return;
-  const uid=String(m.uid||'').slice(0,40);if(!uid)return;
+  const uid=String(m.uid||'').slice(0,40);if(!uid||uid===ME.uid)return;
   if(m.t==='hello'){
-    CONNS[uid]=conn;
     const name=String(m.name||'').trim().slice(0,8)||'손님';
     const ex=PD[uid];
     PD[uid]=ex?{...ex,name,left:false}:{name,joined:Date.now(),left:false};
-    kick();broadcast();
-  }else if(m.t==='me'&&CONNS[uid]===conn){
+    saveHost();kick();broadcast();
+  }else if(m.t==='me'){
     const p=m.patch||{},ok={};
     for(const k of ['sealed','reveal','dec','wantManual','left'])if(k in p)ok[k]=p[k];
     PD[uid]={...(PD[uid]||{}),...ok};
@@ -360,68 +369,49 @@ function onHostMsg(conn,m){
   }
 }
 let bcastQ=false;
-function broadcast(){
-  if(MODE!=='host'||bcastQ)return;bcastQ=true;
+function broadcast(force){
+  if(MODE!=='host')return;
+  if(bcastQ&&!force)return;bcastQ=true;
   setTimeout(()=>{bcastQ=false;
+    if(!MQ||!R)return;
     const pd={};for(const [k,v] of Object.entries(PD))pd[k]={name:v.name,joined:v.joined,left:v.left,sealed:v.sealed,reveal:v.reveal?{round:v.reveal.round}:undefined,dec:v.dec,wantManual:v.wantManual};
-    const msg={t:'state',R,PD:pd};
-    for(const c of Object.values(CONNS)){try{c.open&&c.send(msg)}catch(e){}}
-  },20);
+    try{MQ.publish(T('state'),JSON.stringify({R,PD:pd,at:Date.now()}),{qos:1,retain:true})}catch(e){}
+  },force?0:30);
 }
 
-/* ---- P2P: client ---- */
+/* client */
 function joinRoom(code){
   if(!saveName())return;
-  if(typeof Peer==='undefined'){showErr('연결 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.');return}
+  if(typeof mqtt==='undefined'){showErr('연결 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.');return}
   code=String(code||'').trim().toUpperCase();
   if(!/^[A-Z]{4}$/.test(code)){UI.err='방 코드는 영문 4글자예요.';render();return}
   closeNet();
-  MODE='client';CODE=code;R=null;PD={};HW=null;myPick=null;UI.sentKey=null;UI.err='';UI.screen='game';UI.net='방에 연결 중…';
+  MODE='client';CODE=code;R=null;PD={};HW=null;myPick=null;UI.sentKey=null;UI.err='';UI.screen='game';UI.net='서버에 연결 중…';
   try{history.replaceState(null,'','?room='+code)}catch(e){}
   render();
-  PEER=new Peer(PEER_OPTS);
-  PEER.on('open',()=>connectHost());
-  PEER.on('disconnected',()=>{setTimeout(()=>{try{PEER&&!PEER.destroyed&&PEER.reconnect()}catch(e){}},1500)});
-  PEER.on('error',e=>{
-    if(e.type==='peer-unavailable'){UI.net=R?'방장과 연결이 끊겼어요 — 재연결 중…':'방을 찾는 중… (코드가 맞는지, 방장이 앱을 열어 두었는지 확인)';render();scheduleRetry()}
-    else if(e.type==='network'||e.type==='server-error'||e.type==='socket-error'){UI.net='연결 서버에 접속이 안 돼요 — 재시도 중…';render();scheduleRetry()}
+  mqConnect(c=>{
+    c.subscribe(T('state'),{qos:1});
+    UI.net=R?'':'방 정보를 받는 중…';render();
+    lastHello=0;hello();
+    clearTimeout(watchT);watchT=setTimeout(()=>{if(MODE==='client'&&!R){UI.net='방을 찾을 수 없어요. 코드가 맞는지, 방장이 페이지를 열어 두었는지 확인해 주세요.';render()}},8000);
   });
 }
-function connectHost(){
-  if(!PEER||PEER.destroyed||MODE!=='client')return;
-  if(PEER.disconnected){try{PEER.reconnect()}catch(e){};scheduleRetry();return}
-  try{HOSTCONN&&HOSTCONN.close()}catch(e){}
-  const c=PEER.connect(PEER_PREFIX+CODE,{reliable:true});
-  HOSTCONN=c;
-  const to=setTimeout(()=>{if(!c.open){try{c.close()}catch(e){};scheduleRetry()}},9000);
-  c.on('open',()=>{clearTimeout(to);UI.net='';send({t:'hello',name:ME.name});render()});
-  c.on('data',m=>{
-    if(!m||m.t!=='state')return;
-    R=m.R;PD=m.PD||{};
-    if(myPick&&PD[ME.uid]&&R.phase!=='select')UI.sentKey=UI.sentKey;
-    render();maybeReveal();
-  });
-  c.on('close',()=>{clearTimeout(to);if(HOSTCONN===c&&MODE==='client'){UI.net='방장과 연결이 끊겼어요 — 재연결 중…';render();scheduleRetry()}});
-  c.on('error',()=>{});
-}
-function scheduleRetry(){clearTimeout(retryT);retryT=setTimeout(connectHost,2500)}
-function send(m){if(!HOSTCONN||!HOSTCONN.open)return false;try{HOSTCONN.send({...m,uid:ME.uid});return true}catch(e){return false}}
+function hello(){if(Date.now()-lastHello<3000)return;lastHello=Date.now();send({t:'hello',name:ME.name})}
+function send(m){if(!MQ)return false;try{MQ.publish(T('c2h'),JSON.stringify({...m,uid:ME.uid}),{qos:1});return true}catch(e){return false}}
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState!=='visible')return;
-  if(MODE==='client'&&(!HOSTCONN||!HOSTCONN.open)){clearTimeout(retryT);connectHost()}
-  if(MODE==='host'&&PEER&&PEER.disconnected){try{PEER.reconnect()}catch(e){}}
+  if(document.visibilityState!=='visible'||!MQ)return;
+  if(!MQ.connected){try{MQ.reconnect()}catch(e){}}
 });
 function closeNet(){
-  clearTimeout(retryT);clearTimeout(tmr);tmr=null;
-  try{HOSTCONN&&HOSTCONN.close()}catch(e){}
-  for(const c of Object.values(CONNS)){try{c.close()}catch(e){}}
-  try{PEER&&PEER.destroy()}catch(e){}
-  PEER=null;HOSTCONN=null;CONNS={};
+  clearTimeout(watchT);clearInterval(hbT);clearTimeout(tmr);tmr=null;mqClose();
 }
 async function leaveRoom(){
   if(MODE==='client'&&R&&R.phase==='lobby')send({t:'me',patch:{left:true}});
-  if(MODE==='host'&&R&&(R.phase==='lobby'||R.phase==='end'))lsSet('h13host','');
-  await sleep(100);
+  if(MODE==='host'&&R&&(R.phase==='lobby'||R.phase==='end')){
+    lsSet('h13host','');
+    try{MQ&&MQ.publish(T('state'),'',{qos:1,retain:true})}catch(e){}
+  }
+  await sleep(300);
   closeNet();MODE=null;R=null;HW=null;PD={};UI.screen='home';UI.err='';UI.net='';
   try{history.replaceState(null,'',location.pathname)}catch(e){}
   render();
