@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>무거운 13</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111316;color:#e9eaec;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:15px;-webkit-tap-highlight-color:transparent}
+#app{max-width:520px;margin:0 auto;padding:12px 12px 40px}
+h1{font-size:22px;letter-spacing:-.5px}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
+.top .r{font-size:13px;color:#9aa0a8}
+.btn{border:0;border-radius:10px;padding:12px 14px;font-size:15px;font-weight:600;background:#2a2f37;color:#e9eaec;cursor:pointer}
+.btn.pri{background:#f0b429;color:#1a1300}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:8px}
+.btn.xs{padding:3px 8px;font-size:12px;border-radius:6px}
+.btn:disabled{opacity:.35}
+.w100{width:100%}
+.panel{background:#1b1e23;border-radius:14px;padding:12px;margin-bottom:10px}
+.ptitle{font-size:12px;color:#8b929b;margin-bottom:8px;font-weight:600}
+.muted{color:#8b929b;font-size:13px;line-height:1.6}
+.piles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pile{border-radius:12px;padding:8px;background:#15181c;border:2px solid;min-height:150px;display:flex;flex-direction:column}
+.pile .h{display:flex;justify-content:space-between;align-items:baseline;font-weight:700}
+.pile .sum{font-size:26px;font-variant-numeric:tabular-nums}
+.pile .cnt{font-size:12px;color:#9aa0a8}
+.bar{height:6px;background:#2a2f37;border-radius:3px;margin:6px 0;overflow:hidden}
+.bar i{display:block;height:100%}
+.cubes{display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start;margin-top:auto}
+.cube{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff}
+.cube.new{outline:2px solid #fff}
+.players{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
+.pl{background:#15181c;border-radius:10px;padding:7px 9px;font-size:13px;border:1px solid transparent}
+.pl.me{border-color:#f0b429}
+.pl .n{font-weight:700;display:flex;justify-content:space-between;gap:4px}
+.pl .n span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl .pen{color:#ff8a8a;font-weight:700}
+.pl .sub{color:#8b929b;font-size:11px;margin-top:2px}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+.cardbtn{width:calc((100% - 36px)/7);aspect-ratio:3/4;border-radius:9px;border:2px solid #3a404a;background:#23272e;color:#fff;font-size:22px;font-weight:800;cursor:pointer}
+.cardbtn.on{border-color:#f0b429;background:#3a3220}
+.cardbtn:disabled{opacity:.18}
+.chipbtn{flex:1;min-width:70px;border-radius:999px;border:3px solid transparent;padding:10px 4px;font-weight:700;color:#fff;font-size:14px;cursor:pointer}
+.chipbtn.on{border-color:#fff;box-shadow:0 0 0 2px #111316 inset}
+.chipbtn:disabled{opacity:.2}
+.hint{font-size:13px;color:#b9bec5;margin:10px 0;min-height:18px}
+.order{display:flex;flex-direction:column;gap:4px}
+.ord{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:#15181c;font-size:14px}
+.ord.cur{background:#3a3220}
+.ord .dot{width:14px;height:14px;border-radius:50%;flex:none}
+.ord .c{font-weight:800;width:16px;text-align:center}
+.ord .st{margin-left:auto;font-size:12px;color:#8b929b}
+.decide{margin-top:10px;padding:10px;border-radius:10px;background:#2a2410;border:1px solid #f0b429}
+.decide .q{font-weight:700;margin-bottom:8px}
+.decide .row .btn{flex:1}
+.log{font-size:12.5px;color:#aab0b8;line-height:1.6;max-height:160px;overflow:auto}
+.log b{color:#ff8a8a}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:flex-end;justify-content:center;z-index:9}
+.modal .box{background:#1b1e23;max-width:520px;width:100%;max-height:85vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px;line-height:1.6;font-size:14px}
+.modal h3{margin:12px 0 4px;font-size:15px}
+.modal ul{padding-left:18px}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+input,select{background:#15181c;border:1px solid #3a404a;color:#fff;border-radius:10px;padding:12px;font-size:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:8px 6px;border-bottom:1px solid #2a2f37;text-align:left}
+.tog{font-size:12px;color:#9aa0a8;display:flex;align-items:center;gap:4px}
+.code{font-size:30px;font-weight:800;letter-spacing:6px;color:#f0b429}
+.roomrow{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:10px;background:#15181c;margin-bottom:6px;gap:8px}
+.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:#2a2f37;color:#b9bec5}
+.err{background:#3a1d1d;color:#ffb4b4;border-radius:10px;padding:10px;font-size:13px;margin-bottom:10px;line-height:1.5}
+.wait{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal"></div>
+<script>
+/* ================= constants & helpers ================= */
+const COLORS=['R','G','B'];
+const COL={R:'#e5484d',G:'#30a46c',B:'#3e63dd'};
+const RAINBOW='linear-gradient(90deg,#e5484d,#f0b429,#30a46c,#3e63dd,#8e4ec6)';
+const CN={R:'빨강',G:'초록',B:'파랑',W:'레인보우'};
+const BOTS=['곰봇','여우봇','부엉봇','늑대봇','수달봇','냥봇','펭봇'];
+const MAXP=8;
+const app=document.getElementById('app');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const sumOf=a=>a.reduce((x,y)=>x+y.w,0);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clone=o=>JSON.parse(JSON.stringify(o));
+const act=p=>p&&!p.bot&&!p.auto;
+const chipBg=k=>k==='W'?RAINBOW:COL[k];
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+
+/* ================= global state ================= */
+let MODE=null;           // 'solo' | 'host' | 'client'
+let R=null;              // room state (latest)
+let HW=null;             // host's last written state
+let PD={};               // player docs keyed by uid
+function newUid(){return 'u'+Math.random().toString(36).slice(2,10)}
+let ME={uid:lsGet('h13uid')||newUid(),name:lsGet('h13name')||''};
+lsSet('h13uid',ME.uid);
+let CODE=null;
+let PEER=null,HOSTCONN=null,CONNS={},retryT=null;
+let myPick=null,revealing=false;
+const UI={screen:'home',sel:{card:null,chip:null,round:-1},fast:false,err:'',sentKey:null,soloN:7,net:''};
+const isHost=()=>R&&R.host===ME.uid&&MODE!=='client';
+const myIdx=()=>R?R.players.findIndex(p=>p.id===ME.uid):-1;
+const pace=()=>MODE==='solo'?(UI.fast?150:750):1100;
+function showErr(e){UI.err=typeof e==='string'?e:'오류가 났어요: '+(e&&e.message||e);render()}
+const PEER_PREFIX='h13dp-';
+const PEER_OPTS={debug:0,config:{iceServers:[
+  {urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},
+  {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}
+]}};
+if(window.H13_PEER_OPTS)Object.assign(PEER_OPTS,window.H13_PEER_OPTS);
+
+/* ================= game engine (host) ================= */
+function freshPlayer(id,name,bot){return {id,name,bot,auto:false,autoAt:0,penalty:0,last:0,hand:[0,1,2,3,4,5,6],chips:{R:2,G:2,B:2,W:1}}}
+function refill(p){p.hand=[0,1,2,3,4,5,6];p.chips={R:2,G:2,B:2,W:1}}
+function newRoom(code,host){return {code,host,status:'lobby',phase:'lobby',created:Date.now(),v:0,round:1,players:[],piles:{R:[],G:[],B:[]},first:0,tick:0,q:[],i:0,pi:0,passed:[],stage:'main',await:null,step:0,cur:-1,roundPen:-1,newCube:null,nextAt:0,log:[]}}
+function log(X,t){X.log.unshift(t);if(X.log.length>30)X.log.length=30}
+const pn=(X,pid)=>esc(X.players[pid].name);
+
+function startGame(X){
+  X.players=X.players.map(p=>freshPlayer(p.id,p.name,p.bot));
+  X.piles={R:[],G:[],B:[]};X.round=1;X.tick=0;X.log=[];X.status='play';
+  X.first=Math.floor(Math.random()*X.players.length);
+  log(X,`게임 시작 · 선 플레이어: ${pn(X,X.first)}`);
+  beginRound(X);
+}
+function beginRound(X){
+  if(X.round===8){X.players.forEach(refill);log(X,'8라운드 — 카드와 칩 새 세트 지급')}
+  Object.assign(X,{phase:'select',q:[],i:0,pi:0,passed:[],stage:'main',await:null,cur:-1,roundPen:-1,newCube:null});
+}
+function pileCost(X,k,c,before){
+  const pile=X.piles[k],s=sumOf(pile),pred=s+c+before;
+  if(s+c>=13)return 3+pile.length*1.2;
+  if(pred>=13)return 1.5+pile.length*0.6;
+  if(pred>=11)return 0.6;
+  return 0;
+}
+function botChoose(X,p){
+  const n=X.players.length,lastOfSet=(X.round===7||X.round===14);
+  let best=null;
+  for(const c of new Set(p.hand))for(const k of Object.keys(p.chips)){
+    if(p.chips[k]<=0)continue;
+    const higher=(n-1)*(6-c)/7;
+    let cost=k==='W'?Math.min(...COLORS.map(col=>pileCost(X,col,c,0.4)))+(lastOfSet?0:1.6):pileCost(X,k,c,higher)+(p.chips[k]===1&&p.hand.length>3?0.25:0);
+    cost+=-0.12*c+Math.random()*0.9;
+    if(!best||cost<best.cost)best={cost,card:c,chip:k};
+  }
+  return best;
+}
+function bestColor(X,c){
+  const safe=COLORS.filter(k=>sumOf(X.piles[k])+c<13);
+  if(safe.length){safe.sort((a,b)=>(sumOf(X.piles[b])-sumOf(X.piles[a]))||(Math.random()-.5));return safe[0]}
+  return [...COLORS].sort((a,b)=>X.piles[a].length-X.piles[b].length)[0];
+}
+function botDecide(X,s,canPass){
+  const color=s.chip==='W'?bestColor(X,s.card):s.chip;
+  if(sumOf(X.piles[color])+s.card>=13&&canPass)return {pass:true};
+  return {pass:false,color};
+}
+function applySubs(X){
+  const subs=X.players.map((p,pid)=>{
+    let c,k;
+    const rv=act(p)&&PD[p.id]&&PD[p.id].reveal;
+    if(rv&&p.hand.includes(rv.card)&&p.chips[rv.chip]>0){c=rv.card;k=rv.chip}
+    else{const b=botChoose(X,p);c=b.card;k=b.chip}
+    p.hand.splice(p.hand.indexOf(c),1);p.chips[k]--;
+    return {pid,card:c,chip:k,status:'wait',placed:null};
+  });
+  const n=X.players.length,d=i=>(i-X.first+n)%n;
+  subs.sort((a,b)=>((b.chip==='W')-(a.chip==='W'))||(b.card-a.card)||(d(a.pid)-d(b.pid)));
+  Object.assign(X,{q:subs,i:0,pi:0,passed:[],stage:'main',await:null,phase:'resolve',cur:-1});
+  log(X,`— ${X.round}라운드 공개 —`);
+}
+function place(X,s,color){
+  const pile=X.piles[color],before=sumOf(pile),p=X.players[s.pid],cube={w:s.card,pid:s.pid};
+  if(before+s.card>=13){
+    const pen=pile.length;p.penalty+=pen;p.last=++X.tick;X.roundPen=s.pid;X.piles[color]=[cube];
+    X.newCube={color,idx:0};
+    log(X,`${pn(X,s.pid)}: ${CN[color]} ${before}+${s.card}=${before+s.card} → <b>벌점 ${pen}</b>`);
+  }else{
+    pile.push(cube);X.newCube={color,idx:pile.length-1};
+    log(X,`${pn(X,s.pid)}: ${CN[color]}에 ${s.card} (합 ${before+s.card})`);
+  }
+  s.status='done';s.placed=color;
+}
+function endRound(X){
+  X.cur=-1;X.await=null;
+  if(X.roundPen>=0&&X.roundPen!==X.first){X.first=X.roundPen;log(X,`다음 선 플레이어: ${pn(X,X.first)}`)}
+  X.round++;
+  if(X.round>14){X.phase='end';X.status='end';log(X,'게임 종료');return null}
+  X.phase='roundEnd';X.nextAt=Date.now()+(MODE==='solo'?1500:3500);
+  return X.nextAt-Date.now();
+}
+function stepResolve(X){
+  let qi,canPass;
+  if(X.stage==='main'){
+    if(X.i>=X.q.length){X.stage='passed';X.pi=0}
+    else{qi=X.i;canPass=X.i<X.q.length-1}
+  }
+  if(X.stage==='passed'){
+    if(X.pi>=X.passed.length)return {changed:true,next:endRound(X)};
+    qi=X.passed[X.passed.length-1-X.pi];canPass=false;
+  }
+  const s=X.q[qi],p=X.players[s.pid];
+  X.cur=qi;
+  const needs=act(p)&&(canPass||s.chip==='W');
+  let d;
+  if(needs){
+    if(!X.await||X.await.key!==X.step){X.await={pid:s.pid,key:X.step,canPass};return {changed:true,next:null}}
+    const dec=PD[p.id]&&PD[p.id].dec;
+    if(!dec||dec.key!==X.step)return {changed:false,next:null};
+    d={pass:!!dec.pass&&canPass,color:s.chip==='W'?dec.color:s.chip};
+    if(!d.pass&&!COLORS.includes(d.color))d.color=bestColor(X,s.card);
+  }else d=botDecide(X,s,canPass);
+  X.await=null;X.step++;
+  if(d.pass){s.status='pass';X.passed.push(qi);X.i++;log(X,`${pn(X,s.pid)} 패스`)}
+  else{place(X,s,d.color);if(X.stage==='main')X.i++;else X.pi++}
+  return {changed:true,next:pace()};
+}
+function syncLobby(X){
+  const humans=Object.entries(PD).filter(([id,d])=>d&&d.name&&!d.left).sort((a,b)=>(a[1].joined||0)-(b[1].joined||0));
+  const ids=new Set(humans.map(h=>h[0]));
+  let list=X.players.filter(p=>p.bot||ids.has(p.id)).map(p=>{if(!p.bot)p.name=PD[p.id].name;return p});
+  for(const [id,d] of humans)if(!list.some(p=>p.id===id)&&list.length<MAXP)list.push(freshPlayer(id,d.name,false));
+  const changed=JSON.stringify(list)!==JSON.stringify(X.players);
+  X.players=list;return changed;
+}
+
+/* host loop */
+let busy=false,tmr=null,pendingKick=false;
+function base(){return (HW&&R&&HW.code===R.code&&HW.v>=R.v)?HW:R}
+function schedule(ms){clearTimeout(tmr);tmr=setTimeout(()=>{tmr=null;hostTick()},Math.max(0,ms))}
+function kick(){if(!isHost())return;if(busy){pendingKick=true;return}if(!tmr)schedule(30)}
+async function hostTick(){
+  if(!isHost()||busy)return;
+  busy=true;let next=null;
+  try{
+    const X=clone(base());let changed=false;
+    if(X.phase!=='lobby')for(const p of X.players){
+      const w=PD[p.id]&&PD[p.id].wantManual;
+      if(!p.bot&&p.auto&&w&&w>p.autoAt){p.auto=false;changed=true}
+    }
+    if(X.phase==='lobby'){changed=syncLobby(X)||changed}
+    else if(X.phase==='select'){
+      if(X.players.filter(act).every(p=>PD[p.id]&&PD[p.id].sealed===X.round)){X.phase='reveal';changed=true;next=30}
+    }else if(X.phase==='reveal'){
+      if(X.players.filter(act).every(p=>PD[p.id]&&PD[p.id].reveal&&PD[p.id].reveal.round===X.round)){applySubs(X);changed=true;next=pace()}
+    }else if(X.phase==='resolve'){
+      const r=stepResolve(X);changed=changed||r.changed;next=r.next;
+    }else if(X.phase==='roundEnd'){
+      if(Date.now()>=X.nextAt){beginRound(X);changed=true;next=30}else next=X.nextAt-Date.now();
+    }
+    if(changed){X.v++;await writeRoom(X)}
+  }catch(e){console.error(e);showErr(e);next=null}
+  finally{busy=false}
+  if(next!=null)schedule(next);
+  else if(pendingKick){pendingKick=false;schedule(30)}
+}
+async function hostAction(fn){
+  while(busy)await sleep(40);
+  busy=true;
+  try{const X=clone(base());fn(X);X.v++;await writeRoom(X)}catch(e){showErr(e)}finally{busy=false}
+  schedule(60);
+}
+
+/* ================= backend (solo / host / client) ================= */
+async function writeRoom(X){
+  HW=X;R=X;
+  if(MODE==='host'){saveHost();broadcast()}
+  render();setTimeout(maybeReveal,0);
+}
+async function writeMe(patch){
+  if(MODE==='client'){
+    PD[ME.uid]={...(PD[ME.uid]||{}),...patch};render();
+    if(!send({t:'me',patch}))throw new Error('offline');
+    return;
+  }
+  PD[ME.uid]={...(PD[ME.uid]||{}),...patch};
+  if(MODE==='host'){saveHost();broadcast()}
+  render();kick();maybeReveal();
+}
+async function maybeReveal(){
+  if(!R||R.phase!=='reveal'||revealing)return;
+  const me=R.players[myIdx()];if(!act(me))return;
+  const pd=PD[ME.uid];if(pd&&pd.reveal&&pd.reveal.round===R.round)return;
+  revealing=true;
+  try{
+    let pick=myPick&&myPick.round===R.round&&myPick.code===R.code?myPick:null;
+    if(!pick){try{const s=JSON.parse(lsGet('h13pick-'+CODE)||'null');if(s&&s.round===R.round&&s.code===R.code)pick=s}catch(e){}}
+    if(pick)await writeMe({reveal:{round:pick.round,card:pick.card,chip:pick.chip}});
+  }catch(e){}finally{revealing=false}
+}
+
+/* ---- solo ---- */
+function startSolo(){
+  if(!saveName())return;
+  closeNet();
+  MODE='solo';CODE='SOLO';PD={[ME.uid]:{name:ME.name}};HW=null;myPick=null;
+  const X=newRoom('SOLO',ME.uid);
+  X.players.push(freshPlayer(ME.uid,ME.name,false));
+  const b=[...BOTS].sort(()=>Math.random()-.5);
+  for(let i=1;i<UI.soloN;i++)X.players.push(freshPlayer('bot'+i,b[i-1],true));
+  startGame(X);R=X;UI.screen='game';UI.err='';render();kick();
+}
+
+/* ---- P2P: host ---- */
+function randCode(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ';return Array.from({length:4},()=>a[Math.floor(Math.random()*a.length)]).join('')}
+function saveHost(){if(MODE==='host')lsSet('h13host',JSON.stringify({R,PD,at:Date.now()}))}
+function savedHost(){try{const s=JSON.parse(lsGet('h13host')||'null');if(s&&s.R&&Date.now()-s.at<6*3600e3&&s.R.host===ME.uid&&s.R.status!=='end')return s}catch(e){}return null}
+function createRoom(resume){
+  if(!saveName())return;
+  if(typeof Peer==='undefined'){showErr('연결 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.');return}
+  closeNet();
+  const s=resume?savedHost():null;
+  const code=s?s.R.code:randCode();
+  MODE='host';CODE=code;HW=null;myPick=null;UI.err='';UI.screen='game';
+  if(s){R=s.R;PD=s.PD;R.host=ME.uid}
+  else{R=newRoom(code,ME.uid);PD={[ME.uid]:{name:ME.name,joined:Date.now(),left:false}};syncLobby(R)}
+  UI.net='방 여는 중…';render();
+  openHostPeer(0);
+}
+function openHostPeer(tries){
+  PEER=new Peer(PEER_PREFIX+CODE,PEER_OPTS);
+  PEER.on('open',()=>{UI.net='';render();saveHost();kick()});
+  PEER.on('connection',conn=>{
+    conn.on('data',m=>onHostMsg(conn,m));
+    conn.on('close',()=>{for(const k in CONNS)if(CONNS[k]===conn)delete CONNS[k]});
+  });
+  PEER.on('disconnected',()=>{UI.net='서버 연결 끊김 — 재연결 중…';render();setTimeout(()=>{try{PEER&&!PEER.destroyed&&PEER.reconnect()}catch(e){}},1500)});
+  PEER.on('error',e=>{
+    if(e.type==='unavailable-id'){
+      try{PEER.destroy()}catch(_){}
+      if(tries<8){UI.net='방 코드 확보 중… 잠시만요';render();setTimeout(()=>openHostPeer(tries+1),2500)}
+      else{if(!savedHost()){CODE=randCode();R.code=CODE;openHostPeer(0)}else showErr('이 방 코드를 다시 열 수 없어요. 새 방을 만들어 주세요.')}
+    }else if(e.type==='network'||e.type==='server-error'||e.type==='socket-error'){UI.net='연결 서버에 접속이 안 돼요 — 재시도 중…';render()}
+  });
+}
+function onHostMsg(conn,m){
+  if(!m||typeof m!=='object')return;
+  const uid=String(m.uid||'').slice(0,40);if(!uid)return;
+  if(m.t==='hello'){
+    CONNS[uid]=conn;
+    const name=String(m.name||'').trim().slice(0,8)||'손님';
+    const ex=PD[uid];
+    PD[uid]=ex?{...ex,name,left:false}:{name,joined:Date.now(),left:false};
+    kick();broadcast();
+  }else if(m.t==='me'&&CONNS[uid]===conn){
+    const p=m.patch||{},ok={};
+    for(const k of ['sealed','reveal','dec','wantManual','left'])if(k in p)ok[k]=p[k];
+    PD[uid]={...(PD[uid]||{}),...ok};
+    saveHost();kick();broadcast();
+  }
+}
+let bcastQ=false;
+function broadcast(){
+  if(MODE!=='host'||bcastQ)return;bcastQ=true;
+  setTimeout(()=>{bcastQ=false;
+    const pd={};for(const [k,v] of Object.entries(PD))pd[k]={name:v.name,joined:v.joined,left:v.left,sealed:v.sealed,reveal:v.reveal?{round:v.reveal.round}:undefined,dec:v.dec,wantManual:v.wantManual};
+    const msg={t:'state',R,PD:pd};
+    for(const c of Object.values(CONNS)){try{c.open&&c.send(msg)}catch(e){}}
+  },20);
+}
+
+/* ---- P2P: client ---- */
+function joinRoom(code){
+  if(!saveName())return;
+  if(typeof Peer==='undefined'){showErr('연결 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.');return}
+  code=String(code||'').trim().toUpperCase();
+  if(!/^[A-Z]{4}$/.test(code)){UI.err='방 코드는 영문 4글자예요.';render();return}
+  closeNet();
+  MODE='client';CODE=code;R=null;PD={};HW=null;myPick=null;UI.sentKey=null;UI.err='';UI.screen='game';UI.net='방에 연결 중…';
+  try{history.replaceState(null,'','?room='+code)}catch(e){}
+  render();
+  PEER=new Peer(PEER_OPTS);
+  PEER.on('open',()=>connectHost());
+  PEER.on('disconnected',()=>{setTimeout(()=>{try{PEER&&!PEER.destroyed&&PEER.reconnect()}catch(e){}},1500)});
+  PEER.on('error',e=>{
+    if(e.type==='peer-unavailable'){UI.net=R?'방장과 연결이 끊겼어요 — 재연결 중…':'방을 찾는 중… (코드가 맞는지, 방장이 앱을 열어 두었는지 확인)';render();scheduleRetry()}
+    else if(e.type==='network'||e.type==='server-error'||e.type==='socket-error'){UI.net='연결 서버에 접속이 안 돼요 — 재시도 중…';render();scheduleRetry()}
+  });
+}
+function connectHost(){
+  if(!PEER||PEER.destroyed||MODE!=='client')return;
+  if(PEER.disconnected){try{PEER.reconnect()}catch(e){};scheduleRetry();return}
+  try{HOSTCONN&&HOSTCONN.close()}catch(e){}
+  const c=PEER.connect(PEER_PREFIX+CODE,{reliable:true});
+  HOSTCONN=c;
+  const to=setTimeout(()=>{if(!c.open){try{c.close()}catch(e){};scheduleRetry()}},9000);
+  c.on('open',()=>{clearTimeout(to);UI.net='';send({t:'hello',name:ME.name});render()});
+  c.on('data',m=>{
+    if(!m||m.t!=='state')return;
+    R=m.R;PD=m.PD||{};
+    if(myPick&&PD[ME.uid]&&R.phase!=='select')UI.sentKey=UI.sentKey;
+    render();maybeReveal();
+  });
+  c.on('close',()=>{clearTimeout(to);if(HOSTCONN===c&&MODE==='client'){UI.net='방장과 연결이 끊겼어요 — 재연결 중…';render();scheduleRetry()}});
+  c.on('error',()=>{});
+}
+function scheduleRetry(){clearTimeout(retryT);retryT=setTimeout(connectHost,2500)}
+function send(m){if(!HOSTCONN||!HOSTCONN.open)return false;try{HOSTCONN.send({...m,uid:ME.uid});return true}catch(e){return false}}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible')return;
+  if(MODE==='client'&&(!HOSTCONN||!HOSTCONN.open)){clearTimeout(retryT);connectHost()}
+  if(MODE==='host'&&PEER&&PEER.disconnected){try{PEER.reconnect()}catch(e){}}
+});
+function closeNet(){
+  clearTimeout(retryT);clearTimeout(tmr);tmr=null;
+  try{HOSTCONN&&HOSTCONN.close()}catch(e){}
+  for(const c of Object.values(CONNS)){try{c.close()}catch(e){}}
+  try{PEER&&PEER.destroy()}catch(e){}
+  PEER=null;HOSTCONN=null;CONNS={};
+}
+async function leaveRoom(){
+  if(MODE==='client'&&R&&R.phase==='lobby')send({t:'me',patch:{left:true}});
+  if(MODE==='host'&&R&&(R.phase==='lobby'||R.phase==='end'))lsSet('h13host','');
+  await sleep(100);
+  closeNet();MODE=null;R=null;HW=null;PD={};UI.screen='home';UI.err='';UI.net='';
+  try{history.replaceState(null,'',location.pathname)}catch(e){}
+  render();
+}
+function saveName(){
+  const el=document.getElementById('nm');if(el)ME.name=el.value.trim().slice(0,8);
+  if(!ME.name){UI.err='이름을 입력해 주세요.';render();return false}
+  lsSet('h13name',ME.name);return true;
+}
+
+/* ================= player actions ================= */
+async function submitPick(){
+  const {card,chip}=UI.sel;if(card==null||!chip)return;
+  myPick={code:CODE,round:R.round,card,chip};
+  lsSet('h13pick-'+CODE,JSON.stringify(myPick));
+  try{await writeMe({sealed:R.round})}catch(e){showErr('제출이 전송되지 않았어요. 연결되면 다시 눌러 주세요.')}
+}
+async function decide(pass,color){
+  const a=R.await;if(!a)return;UI.sentKey=a.key;render();
+  try{await writeMe({dec:{key:a.key,pass,color:color||null}})}catch(e){UI.sentKey=null;showErr('전송 실패 — 연결되면 다시 눌러 주세요.')}
+}
+function hostStart(){hostAction(X=>{if(X.players.length>=3)startGame(X)})}
+function hostAddBot(){hostAction(X=>{if(X.players.length>=MAXP)return;const used=new Set(X.players.map(p=>p.name));const nm=BOTS.find(b=>!used.has(b))||'봇';X.players.push(freshPlayer('bot-'+Math.random().toString(36).slice(2,7),nm,true))})}
+function hostRemoveBot(){hostAction(X=>{const i=X.players.map(p=>p.bot).lastIndexOf(true);if(i>=0)X.players.splice(i,1)})}
+function hostAuto(id){hostAction(X=>{const p=X.players.find(p=>p.id===id);if(p){p.auto=true;p.autoAt=Date.now();log(X,`${esc(p.name)} → 자동 진행`)}})}
+function hostRematch(){hostAction(X=>startGame(X))}
+function backToManual(){writeMe({wantManual:Date.now()}).catch(()=>{})}
+function copyLink(){
+  const url=location.origin+location.pathname+'?room='+CODE;
+  const done=()=>{UI.copied=true;render();setTimeout(()=>{UI.copied=false;render()},1500)};
+  if(navigator.clipboard)navigator.clipboard.writeText(url).then(done,()=>{UI.err='복사가 안 돼요. 주소: '+url;render()});
+  else{UI.err='주소: '+url;render()}
+}
+
+/* ================= render ================= */
+function render(){UI.screen==='home'?renderHome():renderGame()}
+function renderHome(){
+  const nmVal=document.getElementById('nm')?.value??ME.name;
+  const qs=new URLSearchParams(location.search).get('room')||'';
+  const codeVal=document.getElementById('codein')?.value??qs;
+  const sh=savedHost();
+  app.innerHTML=`
+  <div class="top"><h1>무거운 13</h1><button class="btn sm" onclick="showRules()">규칙</button></div>
+  ${UI.err?`<div class="err">${esc(UI.err)}</div>`:''}
+  <div class="panel"><div class="field"><label class="ptitle">내 이름</label><input id="nm" maxlength="8" value="${esc(nmVal)}" placeholder="닉네임"></div></div>
+  <div class="panel"><div class="ptitle">같이 하기 (각자 폰으로)</div>
+    ${qs?`<button class="btn pri w100" onclick="joinRoom('${esc(qs)}')">방 ${esc(qs)} 참가하기</button><div style="height:8px"></div>`:''}
+    <div class="row"><input id="codein" maxlength="4" placeholder="방 코드 4글자" style="flex:1;text-transform:uppercase" value="${esc(codeVal)}"><button class="btn" onclick="joinRoom(document.getElementById('codein').value)">참가</button></div>
+    <button class="btn ${qs?'':'pri'} w100" style="margin-top:8px" onclick="createRoom(false)">새 방 만들기 (내가 방장)</button>
+    ${sh?`<button class="btn w100" style="margin-top:8px" onclick="createRoom(true)">진행 중이던 방 ${esc(sh.R.code)} 다시 열기</button>`:''}
+    <div class="muted" style="margin-top:8px">방장 폰이 게임을 진행해요. 게임 중에는 방장이 화면을 켜 둔 채 이 페이지를 열어 두세요.</div>
+  </div>
+  <div class="panel"><div class="ptitle">혼자 하기 (AI 상대)</div>
+    <div class="row"><select onchange="UI.soloN=+this.value" style="flex:1">${[3,4,5,6,7].map(n=>`<option value="${n}" ${n===UI.soloN?'selected':''}>${n}명 (나 + AI ${n-1})</option>`).join('')}</select>
+    <button class="btn" onclick="startSolo()">시작</button></div>
+  </div>
+  <div class="panel muted">바위 카드(0~6)와 색깔 칩을 몰래 내서 받침대에 바위를 올리세요. 내 바위로 받침대 합이 <b style="color:#fff">13 이상</b>이 되면 거기 쌓여 있던 바위 개수만큼 벌점! 14라운드 뒤 벌점이 가장 적은 사람이 승리.</div>`;
+}
+function renderGame(){
+  if(!R){app.innerHTML=`<div class="top"><h1>무거운 13</h1><button class="btn sm" onclick="leaveRoom()">나가기</button></div>${UI.err?`<div class="err">${esc(UI.err)}</div>`:''}<div class="panel muted">${esc(UI.net||'불러오는 중…')}</div>`;return}
+  const mi=myIdx(),me=R.players[mi];
+  if(UI.sel.round!==R.round||UI.sel.code!==R.code){UI.sel={card:null,chip:null,round:R.round,code:R.code};
+    if(me&&me.hand.length===1)UI.sel.card=me.hand[0];
+    if(me){const ch=Object.keys(me.chips).filter(k=>me.chips[k]>0);if(ch.length===1)UI.sel.chip=ch[0]}}
+  let h=`<div class="top"><div><h1>무거운 13</h1><div class="r">${MODE!=='solo'?`방 <b style="color:#f0b429;letter-spacing:2px">${esc(R.code)}</b> · `:''}${R.phase==='lobby'?'대기실':`${Math.min(R.round,14)} / 14 라운드`}</div></div>
+  <div class="row" style="align-items:center">${MODE==='solo'?`<label class="tog"><input type="checkbox" ${UI.fast?'checked':''} onchange="UI.fast=this.checked">빠르게</label>`:''}
+  <button class="btn sm" onclick="showRules()">규칙</button><button class="btn sm" onclick="leaveRoom()">나가기</button></div></div>`;
+  if(UI.err)h+=`<div class="err">${esc(UI.err)} <button class="btn xs" onclick="UI.err='';render()">닫기</button></div>`;
+  if(UI.net)h+=`<div class="err" style="background:#2a2410;color:#f5d58a">${esc(UI.net)}</div>`;
+  if(R.phase==='lobby'){app.innerHTML=h+renderLobby();return}
+  // piles
+  h+=`<div class="panel"><div class="piles">${COLORS.map(k=>{
+    const p=R.piles[k],s=sumOf(p),pct=Math.min(100,s/13*100);
+    return `<div class="pile" style="border-color:${COL[k]}">
+      <div class="h"><span class="sum" style="color:${s>=9?'#ff8a8a':'#fff'}">${s}</span><span class="cnt">바위 ${p.length}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:${COL[k]}"></i></div>
+      <div class="cubes">${p.map((c,i)=>`<div class="cube ${R.newCube&&R.newCube.color===k&&R.newCube.idx===i?'new':''}" style="background:${COL[k]}">${c.w}</div>`).join('')}</div></div>`}).join('')}</div></div>`;
+  // players
+  h+=`<div class="panel"><div class="ptitle">플레이어 (★ 선 · 숫자 = 벌점)</div><div class="players">${R.players.map(p=>{
+    let st='';
+    if(R.phase==='select'||R.phase==='reveal')st=p.bot||p.auto?'자동':(PD[p.id]&&PD[p.id].sealed===R.round?'✓ 제출':'고민 중…');
+    return `<div class="pl ${p.id===ME.uid?'me':''}"><div class="n"><span>${R.first===R.players.indexOf(p)?'★ ':''}${esc(p.name)}${p.id===R.host?' 👑':''}</span><span class="pen">${p.penalty}</span></div>
+    <div class="sub">카드 ${p.hand.length} · 🌈${p.chips.W?'○':'×'}${p.auto?' · 자동':''}${st?' · '+st:''}</div></div>`}).join('')}</div></div>`;
+  // phase
+  if(R.phase==='select')h+=renderSelect(me);
+  else if(R.phase==='reveal')h+=`<div class="panel muted">모두 제출 완료 — 공개 중…</div>`;
+  else if(R.phase==='resolve')h+=renderResolve(mi);
+  else if(R.phase==='roundEnd')h+=`<div class="panel">${renderOrder()}<div class="hint">곧 ${R.round}라운드가 시작돼요…</div></div>`;
+  else if(R.phase==='end')h+=renderEnd();
+  h+=renderHostTools();
+  h+=`<div class="panel"><div class="ptitle">기록</div><div class="log">${R.log.join('<br>')}</div></div>`;
+
+  app.innerHTML=h;
+}
+function renderLobby(){
+  const host=isHost();
+  return `<div class="panel" style="text-align:center"><div class="ptitle">방 코드 — 친구에게 알려 주세요</div><div class="code">${esc(R.code)}</div>
+    <div class="muted">친구는 같은 사이트에서 코드를 입력하거나, 아래 초대 링크로 바로 들어오면 돼요.</div>
+    <button class="btn sm" style="margin-top:8px" onclick="copyLink()">${UI.copied?'복사됨!':'초대 링크 복사'}</button></div>
+  <div class="panel"><div class="ptitle">참가자 ${R.players.length}/${MAXP}</div>
+    ${R.players.map(p=>`<div class="wait"><span>${esc(p.name)}${p.bot?' 🤖':''}${p.id===R.host?' 👑':''}${p.id===ME.uid?' (나)':''}</span></div>`).join('')||'<div class="muted">입장 중…</div>'}
+    ${host?`<div class="row" style="margin-top:10px"><button class="btn sm" onclick="hostAddBot()">+ AI 추가</button><button class="btn sm" onclick="hostRemoveBot()">− AI 빼기</button></div>
+      <button class="btn pri w100" style="margin-top:10px" ${R.players.length<3?'disabled':''} onclick="hostStart()">게임 시작 ${R.players.length<3?'(3명 이상)':''}</button>`
+    :`<div class="muted" style="margin-top:8px">방장이 시작하기를 기다리는 중…</div>`}
+  </div>`;
+}
+function renderSelect(me){
+  if(!me)return `<div class="panel muted">관전 중이에요.</div>`;
+  if(me.auto)return `<div class="panel"><div class="muted">자동 진행 중이에요.</div><button class="btn w100" style="margin-top:8px" onclick="backToManual()">다시 직접 하기</button></div>`;
+  const pd=PD[ME.uid];
+  if(pd&&pd.sealed===R.round){
+    const done=R.players.filter(p=>!act(p)||(PD[p.id]&&PD[p.id].sealed===R.round)).length;
+    const mp=myPick&&myPick.round===R.round?` (낸 것: ${CN[myPick.chip]} ${myPick.card})`:'';
+    return `<div class="panel muted">제출 완료${mp} — 다른 사람 기다리는 중 (${done}/${R.players.length})</div>`;
+  }
+  const {card,chip}=UI.sel;
+  let hint='카드 1장과 칩 1개를 고르세요.';
+  if(card!=null&&chip){
+    if(chip==='W')hint=`레인보우: 놓을 때 받침대를 고릅니다.`;
+    else{const s=sumOf(R.piles[chip]);hint=`${CN[chip]}: 지금 합 ${s} + ${card} = ${s+card}${s+card>=13?' ⚠️ 지금 놓으면 벌점':''} (다른 사람이 먼저 놓을 수 있음)`}
+  }
+  return `<div class="panel"><div class="ptitle">바위 카드</div>
+  <div class="row">${[0,1,2,3,4,5,6].map(c=>`<button class="cardbtn ${card===c?'on':''}" ${me.hand.includes(c)?'':'disabled'} onclick="UI.sel.card=${c};render()">${c}</button>`).join('')}</div>
+  <div class="ptitle" style="margin-top:12px">색깔 칩</div>
+  <div class="row">${['R','G','B','W'].map(k=>`<button class="chipbtn ${chip===k?'on':''}" style="background:${chipBg(k)}" ${me.chips[k]>0?'':'disabled'} onclick="UI.sel.chip='${k}';render()">${k==='W'?'🌈':CN[k]} ×${me.chips[k]}</button>`).join('')}</div>
+  <div class="hint">${hint}</div>
+  <button class="btn pri w100" ${card!=null&&chip?'':'disabled'} onclick="submitPick()">제출</button></div>`;
+}
+function renderOrder(){
+  if(!R.q||!R.q.length)return'';
+  return `<div class="ptitle">놓는 순서</div><div class="order">${R.q.map((s,qi)=>{
+    const cur=R.cur===qi&&s.status!=='done';
+    const st=cur?'▶ 차례':s.status==='pass'?'패스':s.status==='done'?(s.chip==='W'?'→ '+CN[s.placed]:'완료'):'대기';
+    return `<div class="ord ${cur?'cur':''}"><span class="dot" style="background:${chipBg(s.chip)}"></span><span class="c">${s.card}</span><span>${esc(R.players[s.pid].name)}${R.players[s.pid].id===ME.uid?' (나)':''}</span><span class="st">${st}</span></div>`}).join('')}</div>`;
+}
+function renderResolve(mi){
+  let h=`<div class="panel">${renderOrder()}`;
+  const a=R.await;
+  if(a&&a.pid===mi&&UI.sentKey!==a.key&&!(PD[ME.uid]&&PD[ME.uid].dec&&PD[ME.uid].dec.key===a.key)){
+    const s=R.q[R.cur];
+    const opts=s.chip==='W'?COLORS:[s.chip];
+    h+=`<div class="decide"><div class="q">내 차례 — 바위 ${s.card}</div><div class="row">${opts.map(k=>{
+      const b=sumOf(R.piles[k]),boom=b+s.card>=13;
+      return `<button class="btn" style="background:${COL[k]};color:#fff" onclick="decide(false,'${k}')">${CN[k]}에 놓기<br><small>${b}→${b+s.card}${boom?' · 벌점 '+R.piles[k].length:''}</small></button>`}).join('')}
+      ${a.canPass?`<button class="btn" onclick="decide(true)">패스<br><small>맨 나중에 놓기</small></button>`:''}</div></div>`;
+  }else if(a){h+=`<div class="hint">${esc(R.players[a.pid].name)} 님이 결정하는 중…</div>`}
+  return h+'</div>';
+}
+function renderHostTools(){
+  if(MODE==='solo'||!isHost())return'';
+  let waiting=[];
+  if(R.phase==='select')waiting=R.players.filter(p=>act(p)&&!(PD[p.id]&&PD[p.id].sealed===R.round));
+  else if(R.phase==='reveal')waiting=R.players.filter(p=>act(p)&&!(PD[p.id]&&PD[p.id].reveal&&PD[p.id].reveal.round===R.round));
+  else if(R.phase==='resolve'&&R.await)waiting=[R.players[R.await.pid]];
+  if(!waiting.length)return'';
+  return `<div class="panel"><div class="ptitle">방장 도구 — 응답이 없으면 자동으로 넘기기</div>${waiting.map(p=>`<div class="wait"><span>${esc(p.name)} 대기 중</span><button class="btn xs" onclick="hostAuto('${esc(p.id)}')">자동</button></div>`).join('')}</div>`;
+}
+function renderEnd(){
+  const r=[...R.players].sort((a,b)=>(a.penalty-b.penalty)||(a.last-b.last));
+  const myRank=r.findIndex(p=>p.id===ME.uid)+1;
+  return `<div class="panel"><div class="ptitle">최종 순위</div>
+  ${myRank?`<div style="font-size:18px;font-weight:800;margin-bottom:8px">${myRank===1?'🏆 1위!':`${myRank}위`}</div>`:''}
+  <table><tr><th>순위</th><th>이름</th><th>벌점</th></tr>${r.map((p,i)=>`<tr style="${p.id===ME.uid?'color:#f0b429;font-weight:700':''}"><td>${i+1}</td><td>${esc(p.name)}</td><td>${p.penalty}</td></tr>`).join('')}</table>
+  <div style="font-size:12px;color:#8b929b;margin-top:6px">벌점이 같으면 더 최근에 벌점을 받은 사람이 아래 순위</div>
+  <div class="row" style="margin-top:12px">${isHost()?`<button class="btn pri" style="flex:1" onclick="${MODE==='solo'?'startSolo()':'hostRematch()'}">같은 멤버로 다시</button>`:''}<button class="btn" style="flex:1" onclick="leaveRoom()">처음으로</button></div></div>`;
+}
+function showRules(){
+  document.getElementById('modal').innerHTML=`<div class="modal" onclick="if(event.target===this)this.parentNode.innerHTML=''"><div class="box">
+  <h2>무거운 13 규칙</h2>
+  <h3>구성</h3><ul><li>각자 바위 카드 0~6 (7장), 빨강·초록·파랑 칩 2개씩, 레인보우 칩 1개</li><li>받침대 3개(빨강·초록·파랑). 7라운드 후 같은 세트를 새로 받아 총 14라운드</li></ul>
+  <h3>라운드</h3><ul><li>모두 카드 1장 + 칩 1개를 비공개 제출. 칩 색 = 받침대, 카드 숫자 = 바위 무게</li>
+  <li>놓는 순서: 레인보우 칩 먼저 → 카드 숫자 높은 순 → 같으면 선 플레이어(★)부터 시계 방향</li>
+  <li>레인보우는 놓을 때 받침대를 직접 고름</li></ul>
+  <h3>패스</h3><ul><li>내 차례에 한 번 패스 가능. 패스한 바위는 다른 바위가 다 놓인 뒤 놓음</li><li>여러 명이 패스하면 먼저 패스한 사람이 가장 마지막</li><li>순서상 마지막 사람은 패스 불가</li></ul>
+  <h3>벌점</h3><ul><li>내 바위로 받침대 합이 13 이상(13 포함)이 되면, 그 받침대에 있던 바위를 모두 치우고 그 개수만큼 벌점</li><li>내가 방금 놓은 바위 1개만 남음. 0짜리 바위도 개수에 포함</li><li>그 라운드에 마지막으로 벌점을 받은 사람이 다음 선 플레이어</li></ul>
+  <h3>승패</h3><ul><li>14라운드 후 벌점이 적은 순으로 순위. 동점이면 더 최근에 벌점 받은 사람이 아래</li></ul>
+  <p style="font-size:12px;color:#8b929b;margin-top:10px">방송(데블스 플랜: 데드 어게인 1일차 감옥 매치) 기준으로 재구성한 규칙이라 세부는 방송과 다를 수 있음.</p>
+  <button class="btn pri w100" style="margin-top:12px" onclick="document.getElementById('modal').innerHTML=''">닫기</button></div></div>`;
+}
+render();
+</script>
+</body>
+</html>
