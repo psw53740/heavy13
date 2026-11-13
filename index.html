@@ -312,7 +312,10 @@ function mqClose(){try{MQ&&MQ.end(true)}catch(e){}MQ=null}
 function mqConnect(onConnect){
   mqClose();
   const url=MQTT_URLS[urlIdx%MQTT_URLS.length];
-  const c=mqtt.connect(url,{clientId:'h13_'+ME.uid+'_'+Math.random().toString(36).slice(2,6),reconnectPeriod:2000,connectTimeout:8000,clean:true,keepalive:30});
+  const opts=MODE==='host'
+    ?{clientId:'h13h_'+CODE+'_'+ME.uid.slice(0,8),clean:false}
+    :{clientId:'h13_'+ME.uid+'_'+Math.random().toString(36).slice(2,6),clean:true};
+  const c=mqtt.connect(url,{...opts,reconnectPeriod:2000,connectTimeout:8000,keepalive:30});
   MQ=c;let ever=false;
   const failT=setTimeout(()=>{if(!ever&&MQ===c){urlIdx++;UI.net='다른 서버로 연결 시도 중…';render();mqConnect(onConnect)}},10000);
   c.on('connect',()=>{if(MQ!==c)return;ever=true;clearTimeout(failT);onConnect(c)});
@@ -330,6 +333,7 @@ function onMsg(topic,buf){
     R=m.R;PD=m.PD||{};lastStateAt=m.at||Date.now();
     UI.net=Date.now()-lastStateAt>90000?'방장이 지금 접속해 있지 않은 것 같아요. 방장이 앱을 다시 열면 이어져요.':'';
     if(!PD[ME.uid]||PD[ME.uid].name!==ME.name)hello();
+    resendMissing();
     render();maybeReveal();
   }
 }
@@ -349,7 +353,7 @@ function createRoom(resume){
   UI.net='방 여는 중…';render();
   mqConnect(c=>{
     c.subscribe(T('c2h'),{qos:1});
-    UI.net='';render();saveHost();broadcast(true);kick();
+    UI.net='';render();saveHost();broadcast(true);kick();setTimeout(maybeReveal,50);
   });
   clearInterval(hbT);hbT=setInterval(()=>broadcast(true),20000);
 }
@@ -386,7 +390,8 @@ function joinRoom(code){
   code=String(code||'').trim().toUpperCase();
   if(!/^[A-Z]{4}$/.test(code)){UI.err='방 코드는 영문 4글자예요.';render();return}
   closeNet();
-  MODE='client';CODE=code;R=null;PD={};HW=null;myPick=null;UI.sentKey=null;UI.err='';UI.screen='game';UI.net='서버에 연결 중…';
+  MODE='client';CODE=code;R=null;PD={};HW=null;
+  try{myPick=JSON.parse(lsGet('h13pick-'+code)||'null')}catch(e){myPick=null}UI.sentKey=null;UI.err='';UI.screen='game';UI.net='서버에 연결 중…';
   try{history.replaceState(null,'','?room='+code)}catch(e){}
   render();
   mqConnect(c=>{
@@ -395,6 +400,13 @@ function joinRoom(code){
     lastHello=0;hello();
     clearTimeout(watchT);watchT=setTimeout(()=>{if(MODE==='client'&&!R){UI.net='방을 찾을 수 없어요. 코드가 맞는지, 방장이 페이지를 열어 두었는지 확인해 주세요.';render()}},8000);
   });
+}
+let lastResend=0;
+function resendMissing(){
+  if(!R||Date.now()-lastResend<2500)return;
+  const pd=PD[ME.uid]||{},me=R.players[myIdx()];if(!act(me))return;
+  if(R.phase==='select'&&myPick&&myPick.code===R.code&&myPick.round===R.round&&pd.sealed!==R.round){lastResend=Date.now();send({t:'me',patch:{sealed:R.round}})}
+  else if(R.phase==='resolve'&&R.await&&R.await.pid===myIdx()&&UI.lastDec&&UI.lastDec.key===R.await.key&&!(pd.dec&&pd.dec.key===R.await.key)){lastResend=Date.now();send({t:'me',patch:{dec:UI.lastDec}})}
 }
 function hello(){if(Date.now()-lastHello<3000)return;lastHello=Date.now();send({t:'hello',name:ME.name})}
 function send(m){if(!MQ)return false;try{MQ.publish(T('c2h'),JSON.stringify({...m,uid:ME.uid}),{qos:1});return true}catch(e){return false}}
@@ -430,8 +442,8 @@ async function submitPick(){
   try{await writeMe({sealed:R.round})}catch(e){showErr('제출이 전송되지 않았어요. 연결되면 다시 눌러 주세요.')}
 }
 async function decide(pass,color){
-  const a=R.await;if(!a)return;UI.sentKey=a.key;render();
-  try{await writeMe({dec:{key:a.key,pass,color:color||null}})}catch(e){UI.sentKey=null;showErr('전송 실패 — 연결되면 다시 눌러 주세요.')}
+  const a=R.await;if(!a)return;UI.sentKey=a.key;UI.lastDec={key:a.key,pass,color:color||null};render();
+  try{await writeMe({dec:UI.lastDec})}catch(e){UI.sentKey=null;showErr('전송 실패 — 연결되면 다시 눌러 주세요.')}
 }
 function hostStart(){hostAction(X=>{if(X.players.length>=3)startGame(X)})}
 function hostAddBot(){hostAction(X=>{if(X.players.length>=MAXP)return;const used=new Set(X.players.map(p=>p.name));const nm=BOTS.find(b=>!used.has(b))||'봇';X.players.push(freshPlayer('bot-'+Math.random().toString(36).slice(2,7),nm,true))})}
@@ -522,7 +534,7 @@ function renderSelect(me){
   if(!me)return `<div class="panel muted">관전 중이에요.</div>`;
   if(me.auto)return `<div class="panel"><div class="muted">자동 진행 중이에요.</div><button class="btn w100" style="margin-top:8px" onclick="backToManual()">다시 직접 하기</button></div>`;
   const pd=PD[ME.uid];
-  if(pd&&pd.sealed===R.round){
+  if((pd&&pd.sealed===R.round)||(myPick&&myPick.code===R.code&&myPick.round===R.round)){
     const done=R.players.filter(p=>!act(p)||(PD[p.id]&&PD[p.id].sealed===R.round)).length;
     const mp=myPick&&myPick.round===R.round?` (낸 것: ${CN[myPick.chip]} ${myPick.card})`:'';
     return `<div class="panel muted">제출 완료${mp} — 다른 사람 기다리는 중 (${done}/${R.players.length})</div>`;
